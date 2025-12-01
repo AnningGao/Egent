@@ -166,10 +166,10 @@ Egent/
 ├── llm_client.py      # OpenAI client with retry logic
 ├── ew_tools.py        # Core EW measurement functions (LLM tools)
 ├── run_ew.py          # Main analysis pipeline
+├── tutorial.ipynb     # Step-by-step tutorial notebook
 ├── example/           # Example data files
-│   ├── spectrum.csv   # Sample high-SNR spectrum
-│   └── linelist.csv   # Sample line list
-├── data/              # Reference data (optional)
+│   ├── spectrum.csv   # Sample high-SNR Magellan/MIKE spectrum
+│   └── linelist.csv   # Sample line list (14 lines)
 └── README.md
 ```
 
