@@ -24,10 +24,13 @@ Thumbs.db
 
 # Output (these are generated)
 output/
-tutorial_output/
 plots/
 .plots/
-*_output/
+temp_upload/
+
+# Keep tutorial_output for example results (except temp plots)
+!tutorial_output/
+tutorial_output/.plots/
 
 # Data (too large for git)
 spectra/
