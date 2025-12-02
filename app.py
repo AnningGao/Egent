@@ -123,6 +123,38 @@ with st.sidebar:
     ```
     """)
 
+# Option to use example files
+use_example = st.checkbox("📂 Use example files (Magellan/MIKE spectrum, 14 lines)", value=False)
+
+if use_example:
+    # Load example files from local directory
+    example_spectrum = Path("example/spectrum.csv")
+    example_linelist = Path("example/linelist.csv")
+    
+    if example_spectrum.exists() and example_linelist.exists():
+        spectrum_df = pd.read_csv(example_spectrum)
+        linelist_df = pd.read_csv(example_linelist)
+        st.success(f"✓ Loaded example: {len(spectrum_df)} spectrum points, {len(linelist_df)} lines")
+        
+        col_prev1, col_prev2 = st.columns(2)
+        with col_prev1:
+            with st.expander("Preview spectrum"):
+                fig, ax = plt.subplots(figsize=(8, 3))
+                ax.plot(spectrum_df['wavelength'], spectrum_df['flux'], 'k-', lw=0.5)
+                ax.set_xlabel('Wavelength (Å)')
+                ax.set_ylabel('Flux')
+                ax.set_title(f"Example: {spectrum_df['wavelength'].min():.1f} - {spectrum_df['wavelength'].max():.1f} Å")
+                st.pyplot(fig)
+                plt.close()
+        with col_prev2:
+            with st.expander("Preview line list"):
+                st.dataframe(linelist_df)
+    else:
+        st.error("Example files not found. Please upload your own files.")
+        use_example = False
+
+st.markdown("---")
+
 # Main content area
 col1, col2 = st.columns(2)
 
@@ -131,10 +163,11 @@ with col1:
     spectrum_file = st.file_uploader(
         "Upload spectrum CSV",
         type=['csv'],
-        help="CSV with columns: wavelength, flux, flux_error"
+        help="CSV with columns: wavelength, flux, flux_error",
+        disabled=use_example
     )
     
-    if spectrum_file:
+    if spectrum_file and not use_example:
         try:
             spectrum_df = pd.read_csv(spectrum_file)
             st.success(f"✓ Loaded {len(spectrum_df)} points")
@@ -165,10 +198,11 @@ with col2:
     linelist_file = st.file_uploader(
         "Upload line list CSV",
         type=['csv'],
-        help="CSV with column: wavelength"
+        help="CSV with column: wavelength",
+        disabled=use_example
     )
     
-    if linelist_file:
+    if linelist_file and not use_example:
         try:
             linelist_df = pd.read_csv(linelist_file)
             if 'wavelength' not in linelist_df.columns:
@@ -184,38 +218,42 @@ with col2:
 st.markdown("---")
 
 # Run button
-can_run = (
-    spectrum_file is not None and 
-    linelist_file is not None and 
-    api_key and api_key.startswith('sk-')
-)
+has_files = use_example or (spectrum_file is not None and linelist_file is not None)
+has_api_key = api_key and api_key.startswith('sk-')
+can_run = has_files and has_api_key
 
 if not can_run:
     missing = []
-    if spectrum_file is None:
-        missing.append("spectrum file")
-    if linelist_file is None:
-        missing.append("line list file")
-    if not api_key or not api_key.startswith('sk-'):
+    if not has_files:
+        missing.append("files (use example or upload)")
+    if not has_api_key:
         missing.append("valid API key")
     st.info(f"Please provide: {', '.join(missing)}")
 
 if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
-    # Save uploaded files temporarily
+    # Determine file paths
     temp_dir = Path("temp_upload")
     temp_dir.mkdir(exist_ok=True)
     
-    spectrum_path = temp_dir / "spectrum.csv"
-    linelist_path = temp_dir / "linelist.csv"
-    
-    # Reset file positions and save
-    spectrum_file.seek(0)
-    linelist_file.seek(0)
-    
-    with open(spectrum_path, 'wb') as f:
-        f.write(spectrum_file.read())
-    with open(linelist_path, 'wb') as f:
-        f.write(linelist_file.read())
+    if use_example:
+        spectrum_path = Path("example/spectrum.csv")
+        linelist_path = Path("example/linelist.csv")
+    else:
+        # Save uploaded files temporarily
+        temp_dir = Path("temp_upload")
+        temp_dir.mkdir(exist_ok=True)
+        
+        spectrum_path = temp_dir / "spectrum.csv"
+        linelist_path = temp_dir / "linelist.csv"
+        
+        # Reset file positions and save
+        spectrum_file.seek(0)
+        linelist_file.seek(0)
+        
+        with open(spectrum_path, 'wb') as f:
+            f.write(spectrum_file.read())
+        with open(linelist_path, 'wb') as f:
+            f.write(linelist_file.read())
     
     # Import Egent modules
     try:
@@ -469,9 +507,9 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
         mime="application/json"
     )
     
-    # Clean up
+    # Clean up temp files (not example files)
     import shutil
-    if temp_dir.exists():
+    if temp_dir and temp_dir.exists():
         shutil.rmtree(temp_dir)
 
 # Footer
