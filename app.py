@@ -490,22 +490,137 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
     st.subheader("💾 Download Results")
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output = {
-        'metadata': {
-            'timestamp': timestamp,
-            'n_lines': len(line_waves),
-        },
-        'summary': stats,
-        'results': results,
-    }
     
-    results_json = json.dumps(output, indent=2, default=str)
-    st.download_button(
-        label="📥 Download Results JSON",
-        data=results_json,
-        file_name=f"egent_results_{timestamp}.json",
-        mime="application/json"
-    )
+    # Create final results DataFrame
+    final_results_df = pd.DataFrame([{
+        'wavelength': r['wavelength'],
+        'ew_mA': r.get('measured_ew'),
+        'ew_err_mA': r.get('ew_err'),
+        'fit_quality': r.get('fit_quality'),
+        'method': 'llm' if r.get('used_llm') else 'direct',
+        'flagged': r.get('flagged', False),
+        'flag_reason': r.get('flag_reason', ''),
+    } for r in results])
+    
+    # Display final table
+    st.markdown("### 📋 Final EW Measurements")
+    st.dataframe(final_results_df, use_container_width=True)
+    
+    # Download buttons in columns
+    col_dl1, col_dl2, col_dl3 = st.columns(3)
+    
+    with col_dl1:
+        # CSV download
+        csv_data = final_results_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv_data,
+            file_name=f"egent_ew_{timestamp}.csv",
+            mime="text/csv"
+        )
+    
+    with col_dl2:
+        # JSON download
+        output = {
+            'metadata': {
+                'timestamp': timestamp,
+                'n_lines': len(line_waves),
+            },
+            'summary': stats,
+            'results': results,
+        }
+        results_json = json.dumps(output, indent=2, default=str)
+        st.download_button(
+            label="📥 Download JSON",
+            data=results_json,
+            file_name=f"egent_results_{timestamp}.json",
+            mime="application/json"
+        )
+    
+    with col_dl3:
+        # Create ZIP of all plots
+        import zipfile
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for r in results:
+                wave = r['wavelength']
+                if r.get('measured_ew') is not None or r.get('flagged'):
+                    # Regenerate plot for this line
+                    try:
+                        load_spectrum(str(spectrum_path))
+                        region_info = r.get('region_info') or {}
+                        window = region_info.get('window', 3.0)
+                        extract_region(wave, window=window)
+                        
+                        continuum_info = r.get('continuum_info') or {}
+                        method = continuum_info.get('method', 'iterative_linear')
+                        if 'poly' in str(method):
+                            set_continuum_method('polynomial', order=2)
+                        else:
+                            set_continuum_method('iterative_linear', order=1)
+                        
+                        fit_result = fit_ew()
+                        
+                        if fit_result.get('success'):
+                            session = _get_session()
+                            last_fit = session['last_fit']
+                            w = np.array(last_fit['wave'])
+                            f_norm = np.array(last_fit['flux_norm'])
+                            f_norm_err = np.array(last_fit['flux_norm_err'])
+                            model_norm = np.array(last_fit['flux_fit'])
+                            all_lines = last_fit['all_lines']
+                            
+                            residuals = f_norm - model_norm
+                            residuals_norm = residuals / f_norm_err if np.any(f_norm_err > 0) else residuals / 0.01
+                            rms = float(np.std(residuals_norm))
+                            
+                            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 5), height_ratios=[3, 1], sharex=True)
+                            ax1.plot(w, f_norm, 'k-', lw=1.0, alpha=0.9, label='Data')
+                            ax1.plot(w, model_norm, 'r-', lw=1.5, label='Fit')
+                            ax1.axhline(1, color='gray', ls=':', alpha=0.5)
+                            ax1.axvline(wave, color='blue', ls=':', lw=2, alpha=0.7)
+                            for line in all_lines:
+                                color = 'green' if abs(line['center'] - wave) < 0.3 else 'orange'
+                                ax1.axvline(line['center'], color=color, ls='--', alpha=0.5, lw=1)
+                            
+                            meas_ew = r.get('measured_ew', 0)
+                            flagged = r.get('flagged', False)
+                            used_llm = r.get('used_llm', False)
+                            status = "FLAGGED" if flagged else ("LLM" if used_llm else "DIRECT")
+                            ax1.set_title(f'{wave:.2f} Å | {status} | EW={meas_ew:.1f} mÅ')
+                            ax1.set_ylabel('Normalized Flux')
+                            ax1.set_ylim(0.3, 1.15)
+                            ax1.legend(loc='lower right', fontsize=9)
+                            
+                            ax2.axhspan(-1, 1, alpha=0.2, color='lightgreen')
+                            ax2.axhspan(-2, 2, alpha=0.1, color='lightyellow')
+                            ax2.plot(w, residuals_norm, 'k-', lw=0.8)
+                            ax2.axhline(0, color='gray', ls='-', alpha=0.5)
+                            ax2.set_xlabel('Wavelength (Å)')
+                            ax2.set_ylabel('Residuals (σ)')
+                            ax2.set_ylim(-4, 4)
+                            ax2.text(0.02, 0.95, f'RMS={rms:.2f}σ', transform=ax2.transAxes, fontsize=10, va='top')
+                            fig.tight_layout()
+                            
+                            # Save to buffer
+                            img_buffer = io.BytesIO()
+                            fig.savefig(img_buffer, format='png', dpi=120, bbox_inches='tight')
+                            img_buffer.seek(0)
+                            plt.close(fig)
+                            
+                            # Add to zip
+                            subdir = 'flagged' if flagged else ('llm' if used_llm else 'direct')
+                            zf.writestr(f"{subdir}/{wave:.2f}.png", img_buffer.read())
+                    except:
+                        pass
+        
+        zip_buffer.seek(0)
+        st.download_button(
+            label="📥 Download Plots (ZIP)",
+            data=zip_buffer,
+            file_name=f"egent_plots_{timestamp}.zip",
+            mime="application/zip"
+        )
     
     # Clean up temp files (not example files)
     import shutil
