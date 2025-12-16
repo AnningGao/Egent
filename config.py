@@ -6,7 +6,7 @@ Configuration for the Egent EW measurement pipeline.
 
 Backends:
     - 'openai': OpenAI API (requires API key, default: gpt-5-mini)
-    - 'local': Local MLX-VLM (no API key, requires Apple Silicon)
+    - 'local': Local VLM (no API key, requires Apple Silicon)
 
 Environment Variables:
     OPENAI_API_KEY: Your OpenAI API key (for openai backend)
@@ -41,7 +41,7 @@ class EgentConfig:
     
     # Model configuration
     # - OpenAI: 'gpt-5-mini' (default), 'gpt-4o', etc.
-    # - Local: 'lmstudio-community/Qwen3-VL-8B-Instruct-MLX-4bit' (default)
+    # - Local: 'Qwen/Qwen3-VL-8B-Instruct' (default)
     model_id: str = None
     
     # Rate limiting (for OpenAI)
@@ -73,7 +73,7 @@ class EgentConfig:
             if self.backend == 'openai':
                 self.model_id = 'gpt-5-mini'
             else:
-                self.model_id = 'lmstudio-community/Qwen3-VL-8B-Instruct-MLX-4bit'
+                self.model_id = 'Qwen/Qwen3-VL-8B-Instruct'
         
         # Allow environment override for model
         env_model = os.getenv('EGENT_MODEL')

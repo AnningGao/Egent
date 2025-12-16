@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Local LLM Client using MLX-VLM
+Local LLM Client
 ==============================
 
-Runs Qwen3-VL locally on Apple Silicon (M1/M2/M3/M4) using MLX.
+Runs Qwen3-VL locally using huggingface transformers.
 No API key required - completely offline after model download.
 
 Supported models:
-- lmstudio-community/Qwen3-VL-8B-Instruct-MLX-4bit (recommended, ~5GB RAM)
-- mlx-community/Qwen3-VL-2B-Instruct-4bit (smaller, ~2GB RAM)
+- Qwen/Qwen3-VL-8B-Instruct
 """
 
 import os
@@ -16,23 +15,20 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-# Set MLX environment before importing
-os.environ.setdefault('MLX_METAL_PREALLOCATE', 'false')
-
 
 class LocalLLMClient:
-    """Local MLX-VLM client for EW measurement with Qwen3-VL."""
+    """Local HuggingFace transformers client for EW measurement with Qwen3-VL."""
     
     # Default model (4-bit for memory efficiency on 16GB Macs)
-    DEFAULT_MODEL = 'lmstudio-community/Qwen3-VL-8B-Instruct-MLX-4bit'
+    DEFAULT_MODEL = 'Qwen/Qwen3-VL-8B-Instruct'
     
     def __init__(self, model_id: str = None):
         """
         Initialize local LLM client.
         
         Args:
-            model_id: HuggingFace model ID for MLX-VLM model.
-                     Defaults to Qwen3-VL-8B-Instruct-MLX-4bit
+            model_id: HuggingFace model ID.
+                     Defaults to Qwen3-VL-8B-Instruct
         """
         self.model_id = model_id or self.DEFAULT_MODEL
         self._model = None
@@ -48,15 +44,15 @@ class LocalLLMClient:
         print("   (First run will download ~4GB from HuggingFace)")
         
         try:
-            from mlx_vlm import load
-            self._model, self._processor = load(self.model_id)
+            from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+            self._model = Qwen3VLForConditionalGeneration.from_pretrained(self.model_id)
+            self._processor = AutoProcessor.from_pretrained(self.model_id)
             self._loaded = True
             print("✅ Model loaded successfully!")
         except ImportError:
             raise ImportError(
-                "mlx-vlm not installed. Install with:\n"
-                "  pip install mlx-vlm\n"
-                "Note: Requires macOS with Apple Silicon (M1/M2/M3/M4)"
+                "transformers not installed. Install with:\n"
+                "  pip install transformers\n"
             )
         except Exception as e:
             raise RuntimeError(f"Failed to load model: {e}")
@@ -84,9 +80,6 @@ class LocalLLMClient:
         """
         self._ensure_loaded()
         
-        from mlx_vlm import generate
-        from mlx_vlm.prompt_utils import apply_chat_template
-        
         # Build message content
         content = []
         
@@ -106,21 +99,22 @@ class LocalLLMClient:
         content.append({"type": "text", "text": text_prompt})
         
         messages = [{"role": "user", "content": content}]
-        
+        print(messages)
         # Format prompt for model
-        formatted = apply_chat_template(
-            self._processor, 
-            config=self._model.config, 
-            prompt=messages
+        formatted = self._processor.apply_chat_template(
+            conversation=messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt",
+            # config=self._model.config,
         )
-        
+
         # Generate response
-        output = generate(
-            self._model, 
-            self._processor, 
-            formatted, 
-            max_tokens=max_tokens,
-            verbose=False
+        output_ids = self._model.generate(
+            **formatted,
+            max_new_tokens=max_tokens,
+            # verbose=False
         )
         
         # Clean up temp file if created
@@ -130,7 +124,10 @@ class LocalLLMClient:
             except:
                 pass
         
-        return output.text
+        output_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(formatted['input_ids'], output_ids)]
+        response_text = self._processor.batch_decode(output_ids_trimmed)[0]
+
+        return response_text
     
     def chat(
         self,
@@ -151,18 +148,12 @@ class LocalLLMClient:
             messages: List of message dicts
             tools: Tool definitions (for prompt construction)
             system_prompt: System prompt
-            timeout: Not used
-            max_retries: Not used
-            initial_delay: Not used
             
         Returns:
             Response object mimicking OpenAI format
         """
         self._ensure_loaded()
-        
-        from mlx_vlm import generate
-        from mlx_vlm.prompt_utils import apply_chat_template
-        
+
         # Build the prompt
         full_messages = []
         
@@ -206,27 +197,30 @@ class LocalLLMClient:
                     else:
                         content.append(item)
                 processed_messages.append({"role": msg["role"], "content": content})
-            else:
-                processed_messages.append(msg)
+            elif isinstance(msg.get("content"), str):
+                # Text-only message
+                message = {"role": msg["role"], "content": [{"type": "text", "text": msg["content"]}]}
+                processed_messages.append(message)
         
         # Format for model
-        formatted = apply_chat_template(
-            self._processor,
-            config=self._model.config,
-            prompt=processed_messages
+        # print(processed_messages)
+        formatted = self._processor.apply_chat_template(
+            conversation=processed_messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt",
+            # config=self._model.config,
         )
-        
         # Generate
-        output = generate(
-            self._model,
-            self._processor,
-            formatted,
-            max_tokens=2000,
-            verbose=False
+        output_ids = self._model.generate(
+            **formatted,
+            max_new_tokens=2000,
+            # verbose=False
         )
-        
         # Parse response for tool calls
-        response_text = output.text
+        output_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(formatted['input_ids'], output_ids)]
+        response_text = self._processor.batch_decode(output_ids_trimmed)[0]
         tool_calls = self._parse_tool_calls(response_text, tools) if tools else None
         
         # Return OpenAI-compatible response object
@@ -235,9 +229,9 @@ class LocalLLMClient:
             tool_calls=tool_calls,
             model=self.model_id,
             usage={
-                "prompt_tokens": output.prompt_tokens,
-                "completion_tokens": output.generation_tokens,
-                "total_tokens": output.total_tokens
+                "prompt_tokens": formatted['input_ids'].shape[1],
+                "completion_tokens": output_ids_trimmed[0].shape[0],
+                "total_tokens": output_ids[0].shape[0],
             }
         )
     

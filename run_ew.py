@@ -276,6 +276,7 @@ def llm_measure_with_vision(
     line_wave: float,
     direct_result: dict = None,
     output_dir: str = None,
+    client = None,
 ) -> dict:
     """Use LLM with vision to review and improve the EW measurement."""
     from ew_tools import (
@@ -304,7 +305,6 @@ def llm_measure_with_vision(
                                       inputs["ew_err_mA"], "voigt_fit", inputs["quality"])
         return {"error": f"Unknown tool: {name}"}
 
-    client = get_llm_client()
 
     context = ""
     if direct_result and direct_result.get('success'):
@@ -455,7 +455,7 @@ MAX_LINE_RETRIES = 3
 
 def process_line(args) -> dict:
     """Process a single spectral line with retry logic."""
-    spectrum_file, line_wave, idx, total, output_dir = args
+    spectrum_file, line_wave, idx, total, output_dir, client = args
     start = time.time()
 
     direct_result = direct_fit(spectrum_file, line_wave)
@@ -525,8 +525,8 @@ def process_line(args) -> dict:
     
     while True:
         llm_attempts += 1
-        llm_result = llm_measure_with_vision(spectrum_file, line_wave, direct_result, output_dir)
-        
+        llm_result = llm_measure_with_vision(spectrum_file, line_wave, direct_result, output_dir, client)
+
         if llm_result.get('success') and not llm_result.get('flagged'):
             break
         
@@ -786,8 +786,11 @@ def run_ew_analysis(
     if n_workers is None:
         n_workers = config.default_workers
 
+    # Initialize LLM client
+    client = get_llm_client()
+
     # Build argument list
-    args_list = [(spectrum_file, wave, i, len(line_waves), out_dir_str)
+    args_list = [(spectrum_file, wave, i, len(line_waves), out_dir_str, client)
                  for i, wave in enumerate(line_waves)]
 
     # Header
