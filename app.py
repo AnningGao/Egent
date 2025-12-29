@@ -258,9 +258,9 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
     
     # Import Egent modules
     try:
-        from ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, get_fit_plot, _get_session
-        from run_ew import direct_fit, llm_measure_with_vision
-        from config import get_config
+        from egent.ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, get_fit_plot, _get_session
+        from egent.run_ew import direct_fit, llm_measure_with_vision
+        from egent.config import get_config
         from scipy.special import voigt_profile
     except ImportError as e:
         st.error(f"Import error: {e}")

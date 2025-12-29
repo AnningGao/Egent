@@ -22,11 +22,11 @@ def get_llm_client():
     
     Returns OpenAI client or Local MLX client based on EGENT_BACKEND config.
     """
-    from config import get_config
+    from egent.config import get_config
     config = get_config()
     
     if config.backend == 'local':
-        from llm_client_local import LocalLLMClient
+        from egent.llm_client_local import LocalLLMClient
         return LocalLLMClient(model_id=config.model_id)
     else:
         return LLMClient()
@@ -38,7 +38,7 @@ class LLMClient:
     def __init__(self):
         """Initialize client with configuration."""
         from openai import OpenAI
-        from config import get_config
+        from egent.config import get_config
         config = get_config()
         config.validate()
         

@@ -37,8 +37,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from config import get_config
-from llm_client import get_llm_client
+from egent.config import get_config
+from egent.llm_client import get_llm_client
 
 
 # =============================================================================
@@ -193,7 +193,7 @@ def direct_fit(spectrum_file: str, line_wave: float, add_noise: bool = False) ->
         add_noise: Add stochasticity for retry diversity
     """
     import random
-    from ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, _get_session
+    from egent.ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, _get_session
 
     load_spectrum(spectrum_file)
     
@@ -279,7 +279,7 @@ def llm_measure_with_vision(
     client = None,
 ) -> dict:
     """Use LLM with vision to review and improve the EW measurement."""
-    from ew_tools import (
+    from egent.ew_tools import (
         load_spectrum, extract_region, set_continuum_method, set_continuum_regions,
         fit_ew, get_fit_plot, flag_line, record_measurement
     )
@@ -601,7 +601,7 @@ def process_line(args) -> dict:
 
 def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: str):
     """Save diagnostic plot for a line - using stored fit data for consistency."""
-    from ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, _get_session
+    from egent.ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, _get_session
     from scipy.special import voigt_profile
     
     wave = result.get('wavelength')
@@ -744,7 +744,7 @@ def run_ew_analysis(
     Returns:
         List of result dictionaries
     """
-    from ew_tools import load_spectrum
+    from egent.ew_tools import load_spectrum
 
     config = get_config()
     config.validate()
