@@ -35,9 +35,9 @@ st.markdown("<p style='text-align: center;'><b>Ting et al. (2025)</b> | <a href=
 
 # Warning about speed
 st.warning("""
-**Note:** This web demo processes lines sequentially and may be slow. 
-For faster analysis with parallel processing, clone the 
-[GitHub repository](https://github.com/tingyuansen/Egent) 
+**Note:** This web demo processes lines sequentially and may be slow.
+For faster analysis with parallel processing, clone the
+[GitHub repository](https://github.com/tingyuansen/Egent)
 and run locally with `python run_ew.py` or see the `tutorial.ipynb`.
 """)
 
@@ -46,10 +46,10 @@ st.markdown("---")
 # Sidebar for configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
-    
+
     # API Key section with instructions
     st.subheader("🔑 OpenAI API Key")
-    
+
     with st.expander("How to get an API key", expanded=False):
         st.markdown("""
         1. Go to [platform.openai.com](https://platform.openai.com)
@@ -57,35 +57,35 @@ with st.sidebar:
         3. Navigate to **API Keys** in the sidebar
         4. Click **"Create new secret key"**
         5. Copy the key (starts with `sk-`)
-        
+
         **Cost:** About 0.5 cents per line (roughly 200 lines per dollar)
         """)
-    
+
     api_key = st.text_input(
         "Paste your API key here",
         type="password",
         help="Your OpenAI API key (starts with 'sk-')"
     )
-    
+
     if api_key:
         os.environ['OPENAI_API_KEY'] = api_key
         if api_key.startswith('sk-') and len(api_key) > 20:
             st.success("✓ API key set")
         else:
             st.warning("⚠ Invalid key format (should start with 'sk-')")
-    
+
     st.markdown("---")
-    
+
     # File format info
     st.subheader("📄 File Formats")
-    
+
     with st.expander("Spectrum CSV format", expanded=False):
         st.markdown("""
         **Required columns:**
         - `wavelength` - in Angstroms (rest frame)
         - `flux` - flux values (any units)
         - `flux_error` - flux uncertainty
-        
+
         **Example:**
         ```
         wavelength,flux,flux_error
@@ -93,16 +93,16 @@ with st.sidebar:
         6100.05,12480.2,124.8
         ...
         ```
-        
+
         ⚠️ Spectrum must be in **stellar rest frame**
         (barycentric + RV corrections applied)
         """)
-    
+
     with st.expander("Line list CSV format", expanded=False):
         st.markdown("""
         **Required column:**
         - `wavelength` - rest wavelengths to measure
-        
+
         **Example:**
         ```
         wavelength
@@ -112,15 +112,15 @@ with st.sidebar:
         ...
         ```
         """)
-    
+
     st.markdown("---")
     st.markdown("""
     **Citation:**
-    
-    Ting et al. (2025)  
+
+    Ting et al. (2025)
     [arXiv:2512.01270](https://arxiv.org/abs/2512.01270)
-    
-    *Egent: An Autonomous Agent  
+
+    *Egent: An Autonomous Agent
     for Equivalent Width Measurement*
     """)
 
@@ -131,12 +131,12 @@ if use_example:
     # Load example files from local directory
     example_spectrum = Path("example/spectrum.csv")
     example_linelist = Path("example/linelist.csv")
-    
+
     if example_spectrum.exists() and example_linelist.exists():
         spectrum_df = pd.read_csv(example_spectrum)
         linelist_df = pd.read_csv(example_linelist)
         st.success(f"✓ Loaded example: {len(spectrum_df)} spectrum points, {len(linelist_df)} lines")
-        
+
         col_prev1, col_prev2 = st.columns(2)
         with col_prev1:
             with st.expander("Preview spectrum"):
@@ -167,12 +167,12 @@ with col1:
         help="CSV with columns: wavelength, flux, flux_error",
         disabled=use_example
     )
-    
+
     if spectrum_file and not use_example:
         try:
             spectrum_df = pd.read_csv(spectrum_file)
             st.success(f"✓ Loaded {len(spectrum_df)} points")
-            
+
             # Validate columns
             required_cols = ['wavelength', 'flux', 'flux_error']
             missing = [c for c in required_cols if c not in spectrum_df.columns]
@@ -182,7 +182,7 @@ with col1:
                 # Show preview
                 with st.expander("Preview spectrum"):
                     st.dataframe(spectrum_df.head(10))
-                    
+
                     # Quick plot
                     fig, ax = plt.subplots(figsize=(8, 3))
                     ax.plot(spectrum_df['wavelength'], spectrum_df['flux'], 'k-', lw=0.5)
@@ -202,14 +202,14 @@ with col2:
         help="CSV with column: wavelength",
         disabled=use_example
     )
-    
+
     if linelist_file and not use_example:
         try:
             linelist_df = pd.read_csv(linelist_file)
             if 'wavelength' not in linelist_df.columns:
                 linelist_df.columns = ['wavelength'] + list(linelist_df.columns[1:])
             st.success(f"✓ Loaded {len(linelist_df)} lines")
-            
+
             # Show preview
             with st.expander("Preview line list"):
                 st.dataframe(linelist_df)
@@ -235,7 +235,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
     # Determine file paths
     temp_dir = Path("temp_upload")
     temp_dir.mkdir(exist_ok=True)
-    
+
     if use_example:
         spectrum_path = Path("example/spectrum.csv")
         linelist_path = Path("example/linelist.csv")
@@ -243,19 +243,19 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
         # Save uploaded files temporarily
         temp_dir = Path("temp_upload")
         temp_dir.mkdir(exist_ok=True)
-        
+
         spectrum_path = temp_dir / "spectrum.csv"
         linelist_path = temp_dir / "linelist.csv"
-        
+
         # Reset file positions and save
         spectrum_file.seek(0)
         linelist_file.seek(0)
-        
+
         with open(spectrum_path, 'wb') as f:
             f.write(spectrum_file.read())
         with open(linelist_path, 'wb') as f:
             f.write(linelist_file.read())
-    
+
     # Import Egent modules
     try:
         from egent.ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, get_fit_plot, _get_session
@@ -265,55 +265,55 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
     except ImportError as e:
         st.error(f"Import error: {e}")
         st.stop()
-    
+
     # Load data
     load_result = load_spectrum(str(spectrum_path))
     if not load_result['success']:
         st.error(f"Failed to load spectrum: {load_result.get('error')}")
         st.stop()
-    
+
     linelist_df = pd.read_csv(linelist_path)
     if 'wavelength' not in linelist_df.columns:
         linelist_df.columns = ['wavelength'] + list(linelist_df.columns[1:])
     line_waves = linelist_df['wavelength'].dropna().values.tolist()
-    
+
     st.info(f"Processing {len(line_waves)} lines sequentially (this may take a few minutes)...")
-    
+
     # Progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
+
     # Create columns for results
     col_results, col_plots = st.columns([1, 2])
-    
+
     with col_results:
         st.subheader("📈 Results")
         results_table = st.empty()
         early_download_placeholder = st.empty()
-    
+
     with col_plots:
         st.subheader("🔬 Diagnostic Plots")
         plots_container = st.container()
-    
+
     # Process lines ONE AT A TIME (sequential for web demo)
     results = []
     stats = {'direct': 0, 'llm': 0, 'flagged': 0}
     plot_images = {}  # Store plot images for download
-    
+
     for i, line_wave in enumerate(line_waves):
         progress = (i + 1) / len(line_waves)
         progress_bar.progress(progress)
         status_text.text(f"Processing line {i+1}/{len(line_waves)}: {line_wave:.2f} Å")
-        
+
         start_time = time.time()
-        
+
         # Direct fit first
         direct_result = direct_fit(str(spectrum_path), line_wave)
-        
+
         d_ew = direct_result.get('measured_ew')
         d_qual = direct_result.get('fit_quality', '?')
         needs_llm = direct_result.get('needs_improvement', False)
-        
+
         result = {
             'wavelength': line_wave,
             'direct_ew': d_ew,
@@ -322,7 +322,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
             'region_info': direct_result.get('region_info'),
             'continuum_info': direct_result.get('continuum_info'),
         }
-        
+
         if direct_result.get('flagged'):
             result.update({
                 'success': False,
@@ -348,12 +348,12 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
         else:
             # Need LLM
             status_text.text(f"Line {line_wave:.2f} Å: LLM reviewing...")
-            
+
             try:
                 llm_result = llm_measure_with_vision(
                     str(spectrum_path), line_wave, direct_result, str(temp_dir)
                 )
-                
+
                 # Safely get region/continuum info
                 iterations = llm_result.get('iterations', [])
                 if iterations:
@@ -362,7 +362,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                 else:
                     final_region = direct_result.get('region_info')
                     final_continuum = direct_result.get('continuum_info')
-                
+
                 result.update({
                     'success': llm_result.get('success', False),
                     'measured_ew': llm_result.get('measured_ew'),
@@ -378,7 +378,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                     'region_info': final_region,
                     'continuum_info': final_continuum,
                 })
-                
+
                 if result.get('flagged'):
                     stats['flagged'] += 1
                 else:
@@ -393,9 +393,9 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                     'time_sec': time.time() - start_time,
                 })
                 stats['flagged'] += 1
-        
+
         results.append(result)
-        
+
         # Update results table with download button
         results_df = pd.DataFrame([{
             'Wavelength': r['wavelength'],
@@ -405,14 +405,14 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
             'Method': 'LLM' if r.get('used_llm') else 'Direct',
             'Status': '🚩' if r.get('flagged') else '✓',
         } for r in results])
-        
+
         results_table.dataframe(results_df, use_container_width=True)
-        
+
         # Early download option (with warning)
         if len(results) < len(line_waves):
             with early_download_placeholder.container():
                 st.warning("⚠️ Clicking download will **halt processing** and save current results")
-                
+
                 # Create ZIP with current results
                 import zipfile
                 zip_buffer = io.BytesIO()
@@ -426,7 +426,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                         used_llm = r.get('used_llm', False)
                         subdir = 'flagged' if flagged else ('llm' if used_llm else 'direct')
                         zf.writestr(f"plots/{subdir}/{wave:.2f}.png", img_data)
-                
+
                 zip_buffer.seek(0)
                 st.download_button(
                     label=f"⏹️ Stop & Download ({len(results)}/{len(line_waves)} lines + plots)",
@@ -435,7 +435,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                     mime="application/zip",
                     key=f"early_dl_{i}"
                 )
-        
+
         # Generate and display plot
         with plots_container:
             try:
@@ -444,16 +444,16 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                 region_info = result.get('region_info') or {}
                 window = region_info.get('window', 3.0)
                 extract_region(line_wave, window=window)
-                
+
                 continuum_info = result.get('continuum_info') or {}
                 method = continuum_info.get('method', 'iterative_linear')
                 if 'poly' in str(method):
                     set_continuum_method('polynomial', order=2)
                 else:
                     set_continuum_method('iterative_linear', order=1)
-                
+
                 fit_result = fit_ew()
-                
+
                 if fit_result.get('success'):
                     session = _get_session()
                     last_fit = session['last_fit']
@@ -462,23 +462,23 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                     f_norm_err = np.array(last_fit['flux_norm_err'])
                     model_norm = np.array(last_fit['flux_fit'])
                     all_lines = last_fit['all_lines']
-                    
+
                     residuals = f_norm - model_norm
                     residuals_norm = residuals / f_norm_err if np.any(f_norm_err > 0) else residuals / 0.01
                     rms = float(np.std(residuals_norm))
-                    
+
                     # Create plot
                     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 5), height_ratios=[3, 1], sharex=True)
-                    
+
                     ax1.plot(w, f_norm, 'k-', lw=1.0, alpha=0.9, label='Data')
                     ax1.plot(w, model_norm, 'r-', lw=1.5, label='Fit')
                     ax1.axhline(1, color='gray', ls=':', alpha=0.5)
                     ax1.axvline(line_wave, color='blue', ls=':', lw=2, alpha=0.7, label='Target')
-                    
+
                     for line in all_lines:
                         color = 'green' if abs(line['center'] - line_wave) < 0.3 else 'orange'
                         ax1.axvline(line['center'], color=color, ls='--', alpha=0.5, lw=1)
-                    
+
                     meas_ew = result.get('measured_ew', 0)
                     flagged = result.get('flagged', False)
                     used_llm = result.get('used_llm', False)
@@ -488,7 +488,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                     ax1.set_ylabel('Normalized Flux')
                     ax1.set_ylim(0.3, 1.15)
                     ax1.legend(loc='lower right', fontsize=9)
-                    
+
                     ax2.axhspan(-1, 1, alpha=0.2, color='lightgreen')
                     ax2.axhspan(-2, 2, alpha=0.1, color='lightyellow')
                     ax2.plot(w, residuals_norm, 'k-', lw=0.8)
@@ -497,40 +497,40 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                     ax2.set_ylabel('Residuals (σ)')
                     ax2.set_ylim(-4, 4)
                     ax2.text(0.02, 0.95, f'RMS={rms:.2f}σ', transform=ax2.transAxes, fontsize=10, va='top')
-                    
+
                     fig.tight_layout()
-                    
+
                     # Save plot to buffer for download later
                     img_buffer = io.BytesIO()
                     fig.savefig(img_buffer, format='png', dpi=120, bbox_inches='tight')
                     img_buffer.seek(0)
                     plot_images[line_wave] = img_buffer.getvalue()
-                    
+
                     # Display plot (download buttons shown at end)
                     st.pyplot(fig)
                     plt.close()
             except Exception as e:
                 st.warning(f"Could not generate plot for {line_wave:.2f} Å: {e}")
-    
+
     # Final summary
     progress_bar.progress(1.0)
     status_text.text("✅ Analysis complete!")
-    
+
     st.markdown("---")
     st.subheader("📊 Summary")
-    
+
     col_s1, col_s2, col_s3, col_s4 = st.columns(4)
     col_s1.metric("Total Lines", len(results))
     col_s2.metric("Direct Fits", stats['direct'])
     col_s3.metric("LLM Refined", stats['llm'])
     col_s4.metric("Flagged", stats['flagged'])
-    
+
     # Download results
     st.markdown("---")
     st.subheader("💾 Download Results")
-    
+
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    
+
     # Create final results DataFrame
     final_results_df = pd.DataFrame([{
         'wavelength': r['wavelength'],
@@ -541,14 +541,14 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
         'flagged': r.get('flagged', False),
         'flag_reason': r.get('flag_reason', ''),
     } for r in results])
-    
+
     # Display final table
     st.markdown("### 📋 Final EW Measurements")
     st.dataframe(final_results_df, use_container_width=True)
-    
+
     # Download buttons in columns
     col_dl1, col_dl2, col_dl3 = st.columns(3)
-    
+
     with col_dl1:
         # CSV download
         csv_data = final_results_df.to_csv(index=False)
@@ -558,7 +558,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
             file_name=f"egent_ew_{timestamp}.csv",
             mime="text/csv"
         )
-    
+
     with col_dl2:
         # JSON download
         output = {
@@ -576,7 +576,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
             file_name=f"egent_results_{timestamp}.json",
             mime="application/json"
         )
-    
+
     with col_dl3:
         # Create ZIP of all plots from stored images
         import zipfile
@@ -589,7 +589,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
                     used_llm = r.get('used_llm', False)
                     subdir = 'flagged' if flagged else ('llm' if used_llm else 'direct')
                     zf.writestr(f"{subdir}/{wave:.2f}.png", plot_images[wave])
-        
+
         zip_buffer.seek(0)
         st.download_button(
             label="📥 Download Plots (ZIP)",
@@ -597,7 +597,7 @@ if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
             file_name=f"egent_plots_{timestamp}.zip",
             mime="application/zip"
         )
-    
+
     # Clean up temp files (not example files)
     import shutil
     if temp_dir and temp_dir.exists():
@@ -608,8 +608,8 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #888; font-size: 0.9rem;">
     <p><b>Egent</b>: LLM-Powered Equivalent Width Measurement<br>
-    Ting et al. (2025) | 
-    <a href="https://arxiv.org/abs/2512.01270">arXiv:2512.01270</a> | 
+    Ting et al. (2025) |
+    <a href="https://arxiv.org/abs/2512.01270">arXiv:2512.01270</a> |
     <a href="https://github.com/tingyuansen/Egent">GitHub Repository</a></p>
     <p style="font-size: 0.8rem;">For faster processing, run locally with parallel workers.</p>
 </div>

@@ -186,7 +186,7 @@ _SPECTRUM_FILE = None
 def direct_fit(spectrum_file: str, line_wave: float, add_noise: bool = False) -> dict:
     """
     Direct Voigt fitting without LLM intervention.
-    
+
     Args:
         spectrum_file: Path to spectrum CSV
         line_wave: Target wavelength
@@ -196,14 +196,14 @@ def direct_fit(spectrum_file: str, line_wave: float, add_noise: bool = False) ->
     from egent.ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, _get_session
 
     load_spectrum(spectrum_file)
-    
+
     if add_noise:
         window = 3.0 + random.uniform(-0.5, 0.5)
         top_percentile = 85 + random.randint(-5, 5)
     else:
         window = 3.0
         top_percentile = 85
-    
+
     region_result = extract_region(line_wave, window=window)
 
     if not region_result.get('success'):
@@ -479,7 +479,7 @@ def process_line(args) -> dict:
         reason_text = f'tilted residuals ({slope_val}), LLM will adjust continuum'
     else:
         reason_text = reason_explanations.get(reason, reason) if reason else 'needs review'
-    
+
     if needs_llm:
         print(f"    [{idx+1}/{total}] {line_wave:.2f}Å: Direct={d_ew:.1f}mÅ → LLM review ({reason_text})", flush=True)
 
@@ -522,14 +522,14 @@ def process_line(args) -> dict:
     llm_result = None
     llm_attempts = 0
     flag_retries = 0
-    
+
     while True:
         llm_attempts += 1
         llm_result = llm_measure_with_vision(spectrum_file, line_wave, direct_result, output_dir, client)
 
         if llm_result.get('success') and not llm_result.get('flagged'):
             break
-        
+
         if llm_result.get('flagged'):
             flag_retries += 1
             if flag_retries < MAX_LINE_RETRIES:
@@ -537,13 +537,13 @@ def process_line(args) -> dict:
                 print(f"    🔄 Flag retry {flag_retries}/{MAX_LINE_RETRIES}...", flush=True)
                 continue
             break
-        
+
         error_str = str(llm_result.get('error', '')).lower()
         is_retryable = any(x in error_str for x in ['timeout', 'rate', '429', 'retry'])
-        
+
         if not is_retryable or llm_attempts >= MAX_LINE_RETRIES:
             break
-        
+
         wait_time = llm_attempts * 5
         print(f"    ⚠️ Retry {llm_attempts+1}/{MAX_LINE_RETRIES} after {wait_time}s...", flush=True)
         time.sleep(wait_time)
@@ -603,18 +603,18 @@ def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: st
     """Save diagnostic plot for a line - using stored fit data for consistency."""
     from egent.ew_tools import load_spectrum, extract_region, set_continuum_method, fit_ew, _get_session
     from scipy.special import voigt_profile
-    
+
     wave = result.get('wavelength')
     if not wave or not output_dir:
         return
-    
+
     try:
         # Re-run the fit to populate session with correct data
         load_spectrum(spectrum_file)
         region_info = result.get('region_info') or {}
         window = region_info.get('window', 3.0)
         extract_region(wave, window=window)
-        
+
         # Use same continuum method as original fit
         continuum_info = result.get('continuum_info') or {}
         method = continuum_info.get('method', 'iterative_linear')
@@ -622,10 +622,10 @@ def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: st
             set_continuum_method('polynomial', order=2)
         else:
             set_continuum_method('iterative_linear', order=1)
-        
+
         # Re-run fit to get consistent flux_norm and flux_fit
         fit_result = fit_ew()
-        
+
         if not fit_result.get('success'):
             # Fallback: use stored voigt params with simple continuum
             session = _get_session()
@@ -633,7 +633,7 @@ def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: st
             w = region['wave']
             f = region['flux']
             f_err = region['flux_err']
-            
+
             # Simple continuum
             threshold = np.percentile(f, 85)
             cont_mask = f >= threshold
@@ -642,16 +642,16 @@ def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: st
                 continuum = np.polyval(coef, w)
             else:
                 continuum = np.full_like(f, np.percentile(f, 95))
-            
+
             f_norm = f / continuum
             f_norm_err = f_err / continuum
-            
+
             # Build model from stored params
             if result.get('used_llm') and result.get('iterations'):
                 all_lines = result['iterations'][-1].get('all_lines', [])
             else:
                 all_lines = (result.get('direct_voigt_params') or {}).get('all_lines', [])
-            
+
             model_norm = np.ones_like(w)
             for line in all_lines:
                 center = line.get('center', 0)
@@ -672,24 +672,24 @@ def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: st
             f_norm_err = np.array(last_fit['flux_norm_err'])
             model_norm = np.array(last_fit['flux_fit'])
             all_lines = last_fit['all_lines']
-        
+
         residuals = f_norm - model_norm
         residuals_norm = residuals / f_norm_err if np.any(f_norm_err > 0) else residuals / 0.01
         rms = float(np.std(residuals_norm))
-        
+
         # Plot
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), height_ratios=[3, 1], sharex=True)
-        
+
         ax1.plot(w, f_norm, 'k-', lw=1.0, alpha=0.9, label='Data')
         ax1.axhline(1, color='gray', ls=':', alpha=0.5)
         ax1.axvline(wave, color='blue', ls=':', lw=2, alpha=0.7, label='Target')
-        
+
         if all_lines:
             ax1.plot(w, model_norm, 'r-', lw=1.5, label='Fit')
             for line in all_lines:
                 color = 'green' if abs(line['center'] - wave) < 0.3 else 'orange'
                 ax1.axvline(line['center'], color=color, ls='--', alpha=0.5, lw=1)
-        
+
         meas_ew = result.get('measured_ew', 0)
         flagged = result.get('flagged', False)
         used_llm = result.get('used_llm', False)
@@ -699,7 +699,7 @@ def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: st
         ax1.set_ylabel('Normalized Flux')
         ax1.set_ylim(0.3, 1.15)
         ax1.legend(loc='lower right', fontsize=9)
-        
+
         ax2.axhspan(-1, 1, alpha=0.2, color='lightgreen')
         ax2.axhspan(-2, 2, alpha=0.1, color='lightyellow')
         ax2.plot(w, residuals_norm, 'k-', lw=0.8)
@@ -708,14 +708,14 @@ def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: st
         ax2.set_ylabel('Residuals (σ)')
         ax2.set_ylim(-4, 4)
         ax2.text(0.02, 0.95, f'RMS={rms:.2f}σ', transform=ax2.transAxes, fontsize=10, va='top')
-        
+
         fig.tight_layout()
-        
+
         out_path = Path(output_dir) / 'fits' / subdir
         out_path.mkdir(parents=True, exist_ok=True)
         fig.savefig(out_path / f'{wave:.2f}.png', dpi=120, bbox_inches='tight')
         plt.close(fig)
-        
+
     except Exception as e:
         pass
 
@@ -756,7 +756,7 @@ def run_ew_analysis(
     if not spec_result['success']:
         print(f"Error: {spec_result.get('error')}")
         return []
-    
+
     print(f"Spectrum: {spectrum_file}")
     print(f"  {spec_result['n_points']} points, {spec_result['wavelength_range'][0]:.1f}-{spec_result['wavelength_range'][1]:.1f} Å")
     print(f"  Median SNR: {spec_result['median_snr']:.0f}")
@@ -766,12 +766,12 @@ def run_ew_analysis(
     if not linelist_path.exists():
         print(f"Error: Line list not found: {linelist_file}")
         return []
-    
+
     lines_df = pd.read_csv(linelist_path)
     if 'wavelength' not in lines_df.columns:
         # Try first column
         lines_df.columns = ['wavelength'] + list(lines_df.columns[1:])
-    
+
     line_waves = lines_df['wavelength'].dropna().values.tolist()
     print(f"\nLine list: {linelist_file}")
     print(f"  {len(line_waves)} lines to measure")
