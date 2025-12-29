@@ -727,6 +727,7 @@ def save_line_plot(spectrum_file: str, result: dict, output_dir: str, subdir: st
 def run_ew_analysis(
     spectrum_file: str,
     linelist_file: str,
+    llm_client: any = None,
     n_workers: int = None,
     output_dir: str = None,
     clean_plots: bool = True,
@@ -737,6 +738,7 @@ def run_ew_analysis(
     Args:
         spectrum_file: Path to spectrum CSV (wavelength, flux, flux_error)
         linelist_file: Path to line list CSV (wavelength column)
+        llm_client: Initialized LLM client
         n_workers: Number of parallel workers (default: 10)
         output_dir: Output directory (default: ~/Egent_output)
         clean_plots: Remove temporary LLM working plots after completion (default: True)
@@ -787,10 +789,11 @@ def run_ew_analysis(
         n_workers = config.default_workers
 
     # Initialize LLM client
-    client = get_llm_client()
+    if llm_client is None:
+        llm_client = get_llm_client()
 
     # Build argument list
-    args_list = [(spectrum_file, wave, i, len(line_waves), out_dir_str, client)
+    args_list = [(spectrum_file, wave, i, len(line_waves), out_dir_str, llm_client)
                  for i, wave in enumerate(line_waves)]
 
     # Header

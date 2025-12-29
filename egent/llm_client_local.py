@@ -34,19 +34,25 @@ class LocalLLMClient:
         self._model = None
         self._processor = None
         self._loaded = False
-        
+        self._device = None
+        self._device_cpu = 'cpu'
+
     def _ensure_loaded(self):
         """Lazy-load model on first use."""
         if self._loaded:
             return
             
         print(f"🔄 Loading local model: {self.model_id}")
-        print("   (First run will download ~4GB from HuggingFace)")
+        print("   (First run will download ~17GB from HuggingFace)")
         
         try:
             from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
-            self._model = Qwen3VLForConditionalGeneration.from_pretrained(self.model_id)
+            self._model = Qwen3VLForConditionalGeneration.from_pretrained(self.model_id, 
+                                                                          device_map="auto",
+                                                                          attn_implementation='sdpa')
             self._processor = AutoProcessor.from_pretrained(self.model_id)
+            self._device = self._model.device
+            print(f"   Model loaded on device: {self._device}")
             self._loaded = True
             print("✅ Model loaded successfully!")
         except ImportError:
@@ -110,6 +116,9 @@ class LocalLLMClient:
             # config=self._model.config,
         )
 
+        # Move inputs to device
+        formatted = {k: v.to(self._device) for k, v in formatted.items()}
+
         # Generate response
         output_ids = self._model.generate(
             **formatted,
@@ -125,7 +134,7 @@ class LocalLLMClient:
                 pass
         
         output_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(formatted['input_ids'], output_ids)]
-        response_text = self._processor.batch_decode(output_ids_trimmed)[0]
+        response_text = self._processor.batch_decode([ids.to(self._device_cpu) for ids in output_ids_trimmed])[0]
 
         return response_text
     
@@ -203,7 +212,6 @@ class LocalLLMClient:
                 processed_messages.append(message)
         
         # Format for model
-        # print(processed_messages)
         formatted = self._processor.apply_chat_template(
             conversation=processed_messages,
             tokenize=True,
@@ -212,17 +220,22 @@ class LocalLLMClient:
             return_tensors="pt",
             # config=self._model.config,
         )
+        # Move inputs to device
+        formatted = {k: v.to(self._device) for k, v in formatted.items()}
+        
         # Generate
         output_ids = self._model.generate(
             **formatted,
             max_new_tokens=2000,
             # verbose=False
         )
+
         # Parse response for tool calls
         output_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(formatted['input_ids'], output_ids)]
+        output_ids_trimmed = [ids.to(self._device_cpu) for ids in output_ids_trimmed]
         response_text = self._processor.batch_decode(output_ids_trimmed)[0]
         tool_calls = self._parse_tool_calls(response_text, tools) if tools else None
-        
+
         # Return OpenAI-compatible response object
         return LocalResponse(
             content=response_text,
