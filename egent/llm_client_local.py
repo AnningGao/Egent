@@ -47,7 +47,9 @@ class LocalLLMClient:
 
         try:
             from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+            import torch
             self._model = Qwen3VLForConditionalGeneration.from_pretrained(self.model_id,
+                                                                          dtype=torch.float16, # Use float16 for memory efficiency
                                                                           device_map="auto",
                                                                           attn_implementation='sdpa')
             self._processor = AutoProcessor.from_pretrained(self.model_id)
@@ -115,26 +117,30 @@ class LocalLLMClient:
             return_tensors="pt",
             # config=self._model.config,
         )
+        
+        try:
+            # Move inputs to device
+            formatted = {k: v.to(self._device) for k, v in formatted.items()}
 
-        # Move inputs to device
-        formatted = {k: v.to(self._device) for k, v in formatted.items()}
+            # Generate response
+            output_ids = self._model.generate(
+                **formatted,
+                max_new_tokens=max_tokens,
+                # verbose=False
+            )
 
-        # Generate response
-        output_ids = self._model.generate(
-            **formatted,
-            max_new_tokens=max_tokens,
-            # verbose=False
-        )
+            # Clean up temp file if created
+            if image_base64 and not image_path:
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
 
-        # Clean up temp file if created
-        if image_base64 and not image_path:
-            try:
-                os.unlink(temp_path)
-            except:
-                pass
-
-        output_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(formatted['input_ids'], output_ids)]
-        response_text = self._processor.batch_decode([ids.to(self._device_cpu) for ids in output_ids_trimmed])[0]
+            output_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(formatted['input_ids'], output_ids)]
+            response_text = self._processor.batch_decode([ids.to(self._device_cpu) for ids in output_ids_trimmed])[0]
+        except Exception as e:
+            print(f"❌ Error during generation in CHAT_WITH_VISION function: {e}")
+            raise e
 
         return response_text
 
@@ -220,21 +226,26 @@ class LocalLLMClient:
             return_tensors="pt",
             # config=self._model.config,
         )
-        # Move inputs to device
-        formatted = {k: v.to(self._device) for k, v in formatted.items()}
 
-        # Generate
-        output_ids = self._model.generate(
-            **formatted,
-            max_new_tokens=2000,
-            # verbose=False
-        )
+        try:
+            # Move inputs to device
+            formatted = {k: v.to(self._device) for k, v in formatted.items()}
 
-        # Parse response for tool calls
-        output_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(formatted['input_ids'], output_ids)]
-        output_ids_trimmed = [ids.to(self._device_cpu) for ids in output_ids_trimmed]
-        response_text = self._processor.batch_decode(output_ids_trimmed)[0]
-        tool_calls = self._parse_tool_calls(response_text, tools) if tools else None
+            # Generate
+            output_ids = self._model.generate(
+                **formatted,
+                max_new_tokens=2000,
+                # verbose=False
+            )
+
+            # Parse response for tool calls
+            output_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(formatted['input_ids'], output_ids)]
+            output_ids_trimmed = [ids.to(self._device_cpu) for ids in output_ids_trimmed]
+            response_text = self._processor.batch_decode(output_ids_trimmed)[0]
+            tool_calls = self._parse_tool_calls(response_text, tools) if tools else None
+        except Exception as e:
+            print(f"❌ Error during generation in CHAT function: {e}")
+            raise e
 
         # Return OpenAI-compatible response object
         return LocalResponse(
